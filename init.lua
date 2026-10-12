@@ -39,7 +39,7 @@ for i = 1, replacer.max_square do
 
         technic.register_power_tool(ncur, replacer.charge)
 
-        local function handle_meta(s, node)
+        local function handle_meta(s, selected_node)
             local meta = minetest.deserialize(s:get_metadata())
 
             if not meta or not meta.charge then
@@ -48,7 +48,7 @@ for i = 1, replacer.max_square do
                 }
             end
 
-            meta.item = node or
+            meta.item = selected_node or
                 ((meta.item and meta.item.name) and meta.item) or {
                     name = "default:cobble",
                     param1 = 0,
@@ -195,8 +195,7 @@ for i = 1, replacer.max_square do
                     return itemstack
                 end
 
-                -- Do not allow blacklisted node types as targets.
-                -- Place mode can target air, because it fills empty positions.
+                -- Place mode fills air; normal mode replaces a selected node.
                 if not do_place and replacer.blacklist[node.name] then
                     minetest.chat_send_player(
                         player_name,
@@ -205,6 +204,7 @@ for i = 1, replacer.max_square do
                     return itemstack
                 end
 
+                -- Find the plane perpendicular to the player's look direction.
                 local look = user:get_look_dir()
                 local extreme = "x"
 
@@ -228,29 +228,34 @@ for i = 1, replacer.max_square do
                     r[c] = i - 1
                 end
 
+                local min_pos = vector.subtract(pos, r)
+                local max_pos = vector.add(pos, r)
+
                 local nodes
 
                 if do_place then
-                    -- Place mode fills air in the selected plane.
+                    -- Place mode targets empty positions.
                     nodes = minetest.find_nodes_in_area(
-                        vector.subtract(pos, r),
-                        vector.add(pos, r),
+                        min_pos,
+                        max_pos,
                         {"air"}
                     )
                 else
-                    -- Normal mode replaces matching node types.
+                    -- Normal mode targets matching node types.
                     nodes = minetest.find_nodes_in_area(
-                        vector.subtract(pos, r),
-                        vector.add(pos, r),
+                        min_pos,
+                        max_pos,
                         {node.name}
                     )
                 end
 
                 local inv = user:get_inventory()
+
                 if not inv then
                     return itemstack
                 end
 
+                -- Filter out protected or ineligible positions.
                 local allowed_nodes = {}
 
                 for _, p in ipairs(nodes) do
@@ -338,11 +343,11 @@ for i = 1, replacer.max_square do
 
                             if not removed:is_empty() then
                                 if do_place then
-                                    -- Place directly in the empty target.
+                                    -- FIX: Place directly into the air target.
                                     minetest.set_node(p, item)
                                     replaced = replaced + 1
                                 else
-                                    -- Dig the old node first.
+                                    -- Normal mode digs before placing.
                                     minetest.node_dig(p, current_node, user)
 
                                     local after = minetest.get_node_or_nil(p)
