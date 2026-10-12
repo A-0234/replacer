@@ -218,11 +218,9 @@ for i = 1, replacer.max_square do
                     y = true,
                     z = true,
                 }
-
                 coords[extreme] = nil
 
                 local r = vector.new()
-
                 for c in pairs(coords) do
                     r[c] = i - 1
                 end
@@ -259,7 +257,6 @@ for i = 1, replacer.max_square do
 
                 -- Count available replacement items.
                 local item_count = 0
-
                 for _, stack in ipairs(old) do
                     if stack:get_name() == item.name then
                         item_count = item_count + stack:get_count()
@@ -276,7 +273,6 @@ for i = 1, replacer.max_square do
 
                 -- Check charge before modifying nodes.
                 local meta = minetest.deserialize(itemstack:get_metadata())
-
                 if not meta or type(meta.charge) ~= "number" then
                     meta = {
                         charge = 0,
@@ -284,7 +280,6 @@ for i = 1, replacer.max_square do
                 end
 
                 local cost = replacer.per * #allowed_nodes
-
                 if meta.charge < cost then
                     minetest.chat_send_player(
                         player_name,
@@ -304,7 +299,7 @@ for i = 1, replacer.max_square do
                             and not minetest.is_protected(p, player_name) then
 
                         if do_place then
-                            -- Place mode: replace directly at the target.
+                            -- Place mode: replace the target directly.
                             -- No digging and no extra node above the target.
                             local removed = inv:remove_item(
                                 "main",
@@ -316,7 +311,7 @@ for i = 1, replacer.max_square do
                                 replaced = replaced + 1
                             end
                         else
-                            -- Normal mode: dig first, then replace at the same position.
+                            -- Normal mode: dig first.
                             local removed = inv:remove_item(
                                 "main",
                                 ItemStack(item.name)
@@ -328,6 +323,7 @@ for i = 1, replacer.max_square do
                                 local after = minetest.get_node_or_nil(p)
 
                                 if after and after.name == "air" then
+                                    -- Place at the target position only.
                                     minetest.set_node(p, item)
                                     replaced = replaced + 1
                                 else
