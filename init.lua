@@ -9,15 +9,12 @@ replacer = {
     blacklist = {},
 }
 
--- Calculate per-node charge.
 replacer.per = replacer.charge / replacer.nodes
 
--- Blacklisted nodes cannot be placed by the tool.
 function replacer.register_blacklisted_node(name)
     replacer.blacklist[name] = true
 end
 
--- Builtin blacklist.
 replacer.register_blacklisted_node("air")
 replacer.register_blacklisted_node("ignore")
 
@@ -51,7 +48,6 @@ for i = 1, replacer.max_square do
                 }
             end
 
-            -- Set item from available sources, revert to default:cobble if no other node is specified.
             meta.item = node or
                 ((meta.item and meta.item.name) and meta.item) or {
                     name = "default:cobble",
@@ -60,13 +56,17 @@ for i = 1, replacer.max_square do
                 }
 
             s:set_metadata(minetest.serialize(meta))
-            s:get_meta():set_string(
-                "description",
-                minetest.registered_items[s:get_name()].description ..
-                " (" .. meta.item.name .. " " ..
-                (meta.item.param1 or 0) .. " " ..
-                (meta.item.param2 or 0) .. ")"
-            )
+
+            local def = minetest.registered_items[s:get_name()]
+            if def then
+                s:get_meta():set_string(
+                    "description",
+                    def.description .. " (" ..
+                    meta.item.name .. " " ..
+                    (meta.item.param1 or 0) .. " " ..
+                    (meta.item.param2 or 0) .. ")"
+                )
+            end
 
             return s, meta.item
         end
@@ -91,12 +91,14 @@ for i = 1, replacer.max_square do
                         place and "replacer:replacer1"
                         or "replacer:replacer_p"
                     )
+
                     itemstack = handle_meta(itemstack)
 
                     minetest.chat_send_player(
                         player_name,
                         minetest.registered_items[itemstack:get_name()].description
                     )
+
                     return itemstack
                 end
 
@@ -110,9 +112,9 @@ for i = 1, replacer.max_square do
                     end
 
                     local pos = minetest.get_pointed_thing_position(pointed_thing)
-                    local node = minetest.get_node_or_nil(pos)
+                    local pointed_node = minetest.get_node_or_nil(pos)
 
-                    if not node then
+                    if not pointed_node then
                         minetest.chat_send_player(
                             player_name,
                             "Error: Node not yet loaded."
@@ -120,7 +122,7 @@ for i = 1, replacer.max_square do
                         return itemstack
                     end
 
-                    if replacer.blacklist[node.name] then
+                    if replacer.blacklist[pointed_node.name] then
                         minetest.chat_send_player(
                             player_name,
                             "You cannot use that node in a replacer."
@@ -128,13 +130,11 @@ for i = 1, replacer.max_square do
                         return itemstack
                     end
 
-                    -- Select the node type to replace with.
-                    local item
-                    itemstack, item = handle_meta(itemstack, node)
+                    itemstack = handle_meta(itemstack, pointed_node)
 
                     minetest.chat_send_player(
                         player_name,
-                        "Node Replacer: " .. item.name
+                        "Node Replacer: " .. pointed_node.name
                     )
 
                     return itemstack
@@ -143,17 +143,17 @@ for i = 1, replacer.max_square do
                 if user:get_player_control().sneak then
                     if place then
                         return set_node()
-                    else
-                        itemstack:set_name(nnext)
-                        itemstack = handle_meta(itemstack)
-
-                        minetest.chat_send_player(
-                            player_name,
-                            minetest.registered_items[nnext].description
-                        )
-
-                        return itemstack
                     end
+
+                    itemstack:set_name(nnext)
+                    itemstack = handle_meta(itemstack)
+
+                    minetest.chat_send_player(
+                        player_name,
+                        minetest.registered_items[nnext].description
+                    )
+
+                    return itemstack
                 end
 
                 if place then
@@ -163,9 +163,9 @@ for i = 1, replacer.max_square do
                         pointed_thing,
                         true
                     )
-                else
-                    return set_node()
                 end
+
+                return set_node()
             end,
 
             on_use = function(itemstack, user, pointed_thing, do_place)
@@ -195,7 +195,9 @@ for i = 1, replacer.max_square do
                     return itemstack
                 end
 
-                if replacer.blacklist[node.name] then
+                -- Do not allow blacklisted node types as targets.
+                -- Place mode can target air, because it fills empty positions.
+                if not do_place and replacer.blacklist[node.name] then
                     minetest.chat_send_player(
                         player_name,
                         "You cannot use that node in a replacer."
@@ -203,7 +205,6 @@ for i = 1, replacer.max_square do
                     return itemstack
                 end
 
-                -- Determine the plane perpendicular to the player's look direction.
                 local look = user:get_look_dir()
                 local extreme = "x"
 
@@ -218,29 +219,53 @@ for i = 1, replacer.max_square do
                     y = true,
                     z = true,
                 }
+
                 coords[extreme] = nil
 
                 local r = vector.new()
+
                 for c in pairs(coords) do
                     r[c] = i - 1
                 end
 
-                local nodes = minetest.find_nodes_in_area(
-                    vector.subtract(pos, r),
-                    vector.add(pos, r),
-                    {node.name}
-                )
+                local nodes
 
-                -- Filter protected positions before consuming resources.
+                if do_place then
+                    -- Place mode fills air in the selected plane.
+                    nodes = minetest.find_nodes_in_area(
+                        vector.subtract(pos, r),
+                        vector.add(pos, r),
+                        {"air"}
+                    )
+                else
+                    -- Normal mode replaces matching node types.
+                    nodes = minetest.find_nodes_in_area(
+                        vector.subtract(pos, r),
+                        vector.add(pos, r),
+                        {node.name}
+                    )
+                end
+
+                local inv = user:get_inventory()
+                if not inv then
+                    return itemstack
+                end
+
                 local allowed_nodes = {}
 
                 for _, p in ipairs(nodes) do
-                    local current = minetest.get_node_or_nil(p)
+                    local current_node = minetest.get_node_or_nil(p)
 
-                    if current
-                            and current.name == node.name
+                    if current_node
                             and not minetest.is_protected(p, player_name) then
-                        table.insert(allowed_nodes, p)
+
+                        if do_place then
+                            if current_node.name == "air" then
+                                table.insert(allowed_nodes, p)
+                            end
+                        elseif current_node.name == node.name then
+                            table.insert(allowed_nodes, p)
+                        end
                     end
                 end
 
@@ -252,18 +277,17 @@ for i = 1, replacer.max_square do
                     return itemstack
                 end
 
-                local inv = user:get_inventory()
-                local old = inv:get_list("main") or {}
+                -- Count replacement items in the player's inventory.
+                local available = 0
+                local stacks = inv:get_list("main") or {}
 
-                -- Count available replacement items.
-                local item_count = 0
-                for _, stack in ipairs(old) do
+                for _, stack in ipairs(stacks) do
                     if stack:get_name() == item.name then
-                        item_count = item_count + stack:get_count()
+                        available = available + stack:get_count()
                     end
                 end
 
-                if item_count < #allowed_nodes then
+                if available < #allowed_nodes then
                     minetest.chat_send_player(
                         player_name,
                         "Error: Inventory does not contain necessary items."
@@ -273,6 +297,7 @@ for i = 1, replacer.max_square do
 
                 -- Check charge before modifying nodes.
                 local meta = minetest.deserialize(itemstack:get_metadata())
+
                 if not meta or type(meta.charge) ~= "number" then
                     meta = {
                         charge = 0,
@@ -280,6 +305,7 @@ for i = 1, replacer.max_square do
                 end
 
                 local cost = replacer.per * #allowed_nodes
+
                 if meta.charge < cost then
                     minetest.chat_send_player(
                         player_name,
@@ -288,47 +314,46 @@ for i = 1, replacer.max_square do
                     return itemstack
                 end
 
-                -- Replace each eligible target exactly once.
                 local replaced = 0
 
                 for _, p in ipairs(allowed_nodes) do
-                    local current = minetest.get_node_or_nil(p)
+                    local current_node = minetest.get_node_or_nil(p)
 
-                    if current
-                            and current.name == node.name
+                    if current_node
                             and not minetest.is_protected(p, player_name) then
 
+                        local eligible
+
                         if do_place then
-                            -- Place mode: replace the target directly.
-                            -- No digging and no extra node above the target.
-                            local removed = inv:remove_item(
-                                "main",
-                                ItemStack(item.name)
-                            )
-
-                            if not removed:is_empty() then
-                                minetest.set_node(p, item)
-                                replaced = replaced + 1
-                            end
+                            eligible = current_node.name == "air"
                         else
-                            -- Normal mode: dig first.
+                            eligible = current_node.name == node.name
+                        end
+
+                        if eligible then
                             local removed = inv:remove_item(
                                 "main",
                                 ItemStack(item.name)
                             )
 
                             if not removed:is_empty() then
-                                minetest.node_dig(p, current, user)
-
-                                local after = minetest.get_node_or_nil(p)
-
-                                if after and after.name == "air" then
-                                    -- Place at the target position only.
+                                if do_place then
+                                    -- Place directly in the empty target.
                                     minetest.set_node(p, item)
                                     replaced = replaced + 1
                                 else
-                                    -- Restore the replacement item if digging failed.
-                                    inv:add_item("main", removed)
+                                    -- Dig the old node first.
+                                    minetest.node_dig(p, current_node, user)
+
+                                    local after = minetest.get_node_or_nil(p)
+
+                                    if after and after.name == "air" then
+                                        minetest.set_node(p, item)
+                                        replaced = replaced + 1
+                                    else
+                                        -- Restore the item if digging failed.
+                                        inv:add_item("main", removed)
+                                    end
                                 end
                             end
                         end
