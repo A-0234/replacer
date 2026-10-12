@@ -56,7 +56,7 @@ for i = 1, replacer.max_square do
                 ((meta.item and meta.item.name) and meta.item) or {
                     name = "default:cobble",
                     param1 = 0,
-                    param2 = 0
+                    param2 = 0,
                 }
 
             s:set_metadata(minetest.serialize(meta))
@@ -77,7 +77,7 @@ for i = 1, replacer.max_square do
             wield_image = "replacer_replacer.png",
             liquids_pointable = true,
             groups = {
-                not_in_creative_inventory = (i == 1) and 0 or 1
+                not_in_creative_inventory = (i == 1) and 0 or 1,
             },
 
             wear_represents = "technic_RE_charge",
@@ -196,7 +196,6 @@ for i = 1, replacer.max_square do
                     return itemstack
                 end
 
-                -- Prevent invalid target nodes from being selected.
                 if replacer.blacklist[node.name] then
                     minetest.chat_send_player(
                         player_name,
@@ -234,7 +233,7 @@ for i = 1, replacer.max_square do
                     {node.name}
                 )
 
-                -- Filter protected nodes before consuming materials or charge.
+                -- Filter protected nodes before consuming resources.
                 local allowed_nodes = {}
 
                 for _, p in ipairs(nodes) do
@@ -304,7 +303,6 @@ for i = 1, replacer.max_square do
                             and current.name == node.name
                             and not minetest.is_protected(p, player_name) then
 
-                        -- Remove one replacement item.
                         local removed = inv:remove_item(
                             "main",
                             ItemStack(item.name)
@@ -312,22 +310,21 @@ for i = 1, replacer.max_square do
 
                         if not removed:is_empty() then
                             if do_place then
-                                -- Place mode: replace directly at the target.
-                                -- Do not require the target to become air.
+                                -- Place mode: replace the target directly.
                                 minetest.set_node(p, item)
                                 replaced = replaced + 1
                             else
-                                -- Normal mode: dig as the player.
+                                -- Normal mode: dig first.
                                 minetest.node_dig(p, current, user)
 
                                 local after = minetest.get_node_or_nil(p)
 
                                 if after and after.name == "air" then
-                                    -- Place exactly at the target position.
+                                    -- Place at the target, not above it.
                                     minetest.set_node(p, item)
                                     replaced = replaced + 1
                                 else
-                                    -- Digging failed: return the item.
+                                    -- Restore the replacement item if digging failed.
                                     inv:add_item("main", removed)
                                 end
                             end
@@ -366,18 +363,18 @@ for _, drill in ipairs({"", "_1", "_2", "_3", "_4", "_5"}) do
             {
                 "technic:diamond_drill_head",
                 "technic:mining_drill_mk3" .. drill,
-                "technic:diamond_drill_head"
+                "technic:diamond_drill_head",
             },
             {
                 "technic:stainless_steel_ingot",
                 "technic:motor",
-                "technic:stainless_steel_ingot"
+                "technic:stainless_steel_ingot",
             },
             {
                 "pipeworks:filter",
                 "technic:blue_energy_crystal",
-                "default:copper_ingot"
-            }
-        }
+                "default:copper_ingot",
+            },
+        },
     })
 end
