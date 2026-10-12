@@ -30,8 +30,10 @@ local name = {
 for i = 1, replacer.max_square do
     for _, place in ipairs((i == 1) and {false, true} or {false}) do
         local ncur = "replacer:replacer" .. i
-        local nnext = "replacer:replacer" .. ((i == replacer.max_square) and 1 or (i + 1))
+        local nnext = "replacer:replacer" ..
+            ((i == replacer.max_square) and 1 or (i + 1))
         local desc = "Node Replacer (" .. (name[i] or "Square " .. i) .. ")"
+
         if place then
             ncur = "replacer:replacer_p"
             nnext = "replacer:replacer_p"
@@ -42,24 +44,30 @@ for i = 1, replacer.max_square do
 
         local function handle_meta(s, node)
             local meta = minetest.deserialize(s:get_metadata())
+
             if not meta or not meta.charge then
                 meta = {
                     charge = 0,
                 }
             end
+
             -- Set item from available sources, revert to default:cobble if no other node is specified.
-            meta.item = node or ((meta.item and meta.item.name) and meta.item) or {
-                name = "default:cobble",
-                param1 = 0,
-                param2 = 0
-            }
+            meta.item = node or
+                ((meta.item and meta.item.name) and meta.item) or {
+                    name = "default:cobble",
+                    param1 = 0,
+                    param2 = 0
+                }
+
             s:set_metadata(minetest.serialize(meta))
             s:get_meta():set_string(
                 "description",
-                minetest.registered_items[s:get_name()].description .. " (" ..
-                meta.item.name .. " " .. (meta.item.param1 or 0) .. " " ..
+                minetest.registered_items[s:get_name()].description ..
+                " (" .. meta.item.name .. " " ..
+                (meta.item.param1 or 0) .. " " ..
                 (meta.item.param2 or 0) .. ")"
             )
+
             return s, meta.item
         end
 
@@ -68,7 +76,9 @@ for i = 1, replacer.max_square do
             inventory_image = "replacer_replacer.png^technic_tool_mode" .. i .. ".png",
             wield_image = "replacer_replacer.png",
             liquids_pointable = true,
-            groups = {not_in_creative_inventory = (i == 1) and 0 or 1},
+            groups = {
+                not_in_creative_inventory = (i == 1) and 0 or 1
+            },
 
             wear_represents = "technic_RE_charge",
             on_refill = technic.refill_RE_charge,
@@ -77,8 +87,12 @@ for i = 1, replacer.max_square do
                 local player_name = user:get_player_name()
 
                 if user:get_player_control().aux1 then
-                    itemstack:set_name(place and "replacer:replacer1" or "replacer:replacer_p")
+                    itemstack:set_name(
+                        place and "replacer:replacer1"
+                        or "replacer:replacer_p"
+                    )
                     itemstack = handle_meta(itemstack)
+
                     minetest.chat_send_player(
                         player_name,
                         minetest.registered_items[itemstack:get_name()].description
@@ -88,19 +102,30 @@ for i = 1, replacer.max_square do
 
                 local function set_node()
                     if pointed_thing.type ~= "node" then
-                        minetest.chat_send_player(player_name, "Error: No node selected.")
-                        return
+                        minetest.chat_send_player(
+                            player_name,
+                            "Error: No node selected."
+                        )
+                        return itemstack
                     end
 
                     local pos = minetest.get_pointed_thing_position(pointed_thing)
-                    local node = minetest.get_node(pos)
+                    local node = minetest.get_node_or_nil(pos)
+
+                    if not node then
+                        minetest.chat_send_player(
+                            player_name,
+                            "Error: Node not yet loaded."
+                        )
+                        return itemstack
+                    end
 
                     if replacer.blacklist[node.name] then
                         minetest.chat_send_player(
                             player_name,
                             "You cannot use that node in a replacer."
                         )
-                        return
+                        return itemstack
                     end
 
                     -- Handle meta, setting item to pointed node.
@@ -108,7 +133,11 @@ for i = 1, replacer.max_square do
                     itemstack, item = handle_meta(itemstack, node)
 
                     -- Send alert to player about change.
-                    minetest.chat_send_player(player_name, "Node Replacer: " .. item.name)
+                    minetest.chat_send_player(
+                        player_name,
+                        "Node Replacer: " .. item.name
+                    )
+
                     return itemstack
                 end
 
@@ -118,17 +147,22 @@ for i = 1, replacer.max_square do
                     else
                         itemstack:set_name(nnext)
                         itemstack = handle_meta(itemstack)
+
                         minetest.chat_send_player(
                             player_name,
                             minetest.registered_items[nnext].description
                         )
+
                         return itemstack
                     end
                 end
 
                 if place then
                     return minetest.registered_items[ncur].on_use(
-                        itemstack, user, pointed_thing, true
+                        itemstack,
+                        user,
+                        pointed_thing,
+                        true
                     )
                 else
                     return set_node()
@@ -140,20 +174,40 @@ for i = 1, replacer.max_square do
                 local _, item = handle_meta(itemstack)
 
                 if pointed_thing.type ~= "node" then
-                    minetest.chat_send_player(player_name, "Error: No node selected")
-                    return
+                    minetest.chat_send_player(
+                        player_name,
+                        "Error: No node selected"
+                    )
+                    return itemstack
                 end
 
-                local pos = minetest.get_pointed_thing_position(pointed_thing, do_place)
+                local pos = minetest.get_pointed_thing_position(
+                    pointed_thing,
+                    do_place
+                )
+
                 local node = minetest.get_node_or_nil(pos)
 
                 if not node then
-                    minetest.chat_send_player(player_name, "Error: Node not yet loaded.")
-                    return
+                    minetest.chat_send_player(
+                        player_name,
+                        "Error: Node not yet loaded."
+                    )
+                    return itemstack
+                end
+
+                -- Prevent invalid target nodes from being selected.
+                if replacer.blacklist[node.name] then
+                    minetest.chat_send_player(
+                        player_name,
+                        "You cannot use that node in a replacer."
+                    )
+                    return itemstack
                 end
 
                 local look = user:get_look_dir()
                 local extreme = "x"
+
                 for _, c in ipairs({"y", "z"}) do
                     if math.abs(look[c]) > math.abs(look[extreme]) then
                         extreme = c
@@ -169,6 +223,7 @@ for i = 1, replacer.max_square do
                 coords[extreme] = nil
 
                 local r = vector.new()
+
                 for c in pairs(coords) do
                     r[c] = i - 1
                 end
@@ -179,24 +234,33 @@ for i = 1, replacer.max_square do
                     {node.name}
                 )
 
-                -- Filter protected nodes before consuming items or charge.
+                -- Filter protected nodes before consuming materials or charge.
                 local allowed_nodes = {}
+
                 for _, p in ipairs(nodes) do
-                    if not minetest.is_protected(p, player_name) then
+                    local current = minetest.get_node_or_nil(p)
+
+                    if current
+                            and current.name == node.name
+                            and not minetest.is_protected(p, player_name) then
                         table.insert(allowed_nodes, p)
                     end
                 end
 
                 if #allowed_nodes == 0 then
-                    minetest.chat_send_player(player_name, "Error: No replaceable nodes.")
+                    minetest.chat_send_player(
+                        player_name,
+                        "Error: No replaceable nodes."
+                    )
                     return itemstack
                 end
 
                 local inv = user:get_inventory()
                 local old = inv:get_list("main") or {}
 
-                -- Count the required replacement items without modifying inventory.
+                -- Check replacement material availability.
                 local item_count = 0
+
                 for _, stack in ipairs(old) do
                     if stack:get_name() == item.name then
                         item_count = item_count + stack:get_count()
@@ -213,41 +277,59 @@ for i = 1, replacer.max_square do
 
                 -- Check charge before making changes.
                 local meta = minetest.deserialize(itemstack:get_metadata())
+
                 if not meta or type(meta.charge) ~= "number" then
-                    meta = {charge = 0}
+                    meta = {
+                        charge = 0,
+                    }
                 end
 
                 local cost = replacer.per * #allowed_nodes
+
                 if meta.charge < cost then
-                    minetest.chat_send_player(player_name, "Error: Not enough charge.")
+                    minetest.chat_send_player(
+                        player_name,
+                        "Error: Not enough charge."
+                    )
                     return itemstack
                 end
 
-                -- Perform replacements only on unprotected, matching nodes.
+                -- Replace each eligible target exactly once.
                 local replaced = 0
 
                 for _, p in ipairs(allowed_nodes) do
-                    local current_node = minetest.get_node_or_nil(p)
+                    local current = minetest.get_node_or_nil(p)
 
-                    if current_node
-                            and current_node.name == node.name
+                    if current
+                            and current.name == node.name
                             and not minetest.is_protected(p, player_name) then
 
-                        if not do_place then
-                            minetest.node_dig(p, current_node, user)
-                        end
+                        -- Remove one replacement item.
+                        local removed = inv:remove_item(
+                            "main",
+                            ItemStack(item.name)
+                        )
 
-                        local after = minetest.get_node_or_nil(p)
-                        if after and after.name == "air" then
-                            local removed = inv:remove_item("main", ItemStack(item.name))
-
-                            if not removed:is_empty() then
-                                minetest.place_node(
-                                    vector.add(p, vector.new(0, 1, 0)),
-                                    item
-                                )
-                                minetest.swap_node(p, item)
+                        if not removed:is_empty() then
+                            if do_place then
+                                -- Place mode: replace directly at the target.
+                                -- Do not require the target to become air.
+                                minetest.set_node(p, item)
                                 replaced = replaced + 1
+                            else
+                                -- Normal mode: dig as the player.
+                                minetest.node_dig(p, current, user)
+
+                                local after = minetest.get_node_or_nil(p)
+
+                                if after and after.name == "air" then
+                                    -- Place exactly at the target position.
+                                    minetest.set_node(p, item)
+                                    replaced = replaced + 1
+                                else
+                                    -- Digging failed: return the item.
+                                    inv:add_item("main", removed)
+                                end
                             end
                         end
                     end
@@ -259,7 +341,13 @@ for i = 1, replacer.max_square do
                         0,
                         meta.charge - replacer.per * replaced
                     )
-                    technic.set_RE_wear(itemstack, meta.charge, replacer.charge)
+
+                    technic.set_RE_wear(
+                        itemstack,
+                        meta.charge,
+                        replacer.charge
+                    )
+
                     itemstack:set_metadata(minetest.serialize(meta))
                 end
 
